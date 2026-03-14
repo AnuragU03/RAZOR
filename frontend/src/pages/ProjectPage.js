@@ -6,15 +6,19 @@ import ReactMarkdown from "react-markdown";
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const STEP_ICONS = {
+  "Unsiloed Parser": "bi-file-earmark-richtext",
   "Code Reader": "bi-book",
   "RAG Writer": "bi-pencil-square",
   "Editor": "bi-check2-circle",
+  "Safedep MCP": "bi-shield-lock",
   "Compiler": "bi-gear",
   "Deployer": "bi-rocket-takeoff",
+  "Concierge": "bi-bell",
   "Log Parser": "bi-search",
   "Patch Generator": "bi-wrench",
   "Sandbox Tester": "bi-box",
   "Selector": "bi-trophy",
+  "Gearsec MCP": "bi-shield-check",
   "Merger": "bi-git",
 };
 
@@ -37,6 +41,11 @@ function PipelineSteps({ steps }) {
             <div className="flex items-center gap-2">
               <span className="font-bold">{step.name}</span>
               <span className="text-xs opacity-75">({step.agent})</span>
+              {i === 0 && step.status === "completed" && step.output && step.output.includes("files parsed") && (
+                <span className="bg-neo-purple text-white text-[10px] font-bold px-2 py-0.5 border border-black" data-testid="unsiloed-badge">
+                  {step.output.match(/\d+/)?.[0] || "0"} files indexed
+                </span>
+              )}
             </div>
             {step.output && <p className="text-sm mt-1 truncate opacity-90">{step.output}</p>}
             {step.error && <p className="text-sm mt-1 text-red-200">{step.error}</p>}
@@ -49,6 +58,42 @@ function PipelineSteps({ steps }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PartnerBadges({ badges, type }) {
+  if (!badges) return null;
+  const items = type === "docs"
+    ? [
+        { key: "unsiloed", label: "Unsiloed", icon: "bi-file-earmark-richtext", color: "bg-indigo-500" },
+        { key: "safedep", label: "Safedep", icon: "bi-shield-lock", color: "bg-orange-500" },
+        { key: "s2", label: "S2 audit trail", icon: "bi-camera-reels", color: "bg-blue-500" },
+        { key: "concierge", label: "Concierge notified", icon: "bi-bell", color: "bg-teal-500" },
+      ]
+    : [
+        { key: "unsiloed", label: "Unsiloed", icon: "bi-file-earmark-richtext", color: "bg-indigo-500" },
+        { key: "gearsec", label: "Gearsec policy", icon: "bi-shield-check", color: "bg-yellow-500" },
+        { key: "s2", label: "S2 audit trail", icon: "bi-camera-reels", color: "bg-blue-500" },
+        { key: "concierge", label: "Concierge notified", icon: "bi-bell", color: "bg-teal-500" },
+      ];
+
+  return (
+    <div className="flex flex-wrap gap-2 mt-3" data-testid="partner-badges">
+      {items.map((item) => {
+        const badge = badges[item.key];
+        const active = badge && badge.status;
+        return (
+          <span
+            key={item.key}
+            className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-1 border-2 border-black ${active ? `${item.color} text-white` : "bg-gray-200 text-gray-500"}`}
+            data-testid={`badge-${item.key}`}
+          >
+            <i className={`bi ${item.icon}`}></i>
+            {item.label} {active ? "\u2713" : ""}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -240,11 +285,25 @@ export default function ProjectPage() {
               <div className="bg-white border-4 border-black shadow-neo p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg">Pipeline Progress</h3>
-                  <span className={`px-3 py-1 font-bold text-sm border-2 border-black ${latestDocsRun.status === "completed" ? "bg-neo-green text-white" : latestDocsRun.status === "running" ? "bg-neo-yellow" : latestDocsRun.status === "failed" ? "bg-neo-red text-white" : "bg-gray-200"}`}>
-                    {latestDocsRun.status.toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {latestDocsRun.status === "completed" && (
+                      <button
+                        onClick={() => window.open(`${API}/pipeline-runs/${latestDocsRun.id}/replay`, '_blank')}
+                        className="neo-button bg-neo-purple text-white px-3 py-1 text-xs font-bold border-2 border-black shadow-neo-sm"
+                        data-testid="replay-docs-btn"
+                      >
+                        <i className="bi bi-camera-reels mr-1"></i>REPLAY RUN
+                      </button>
+                    )}
+                    <span className={`px-3 py-1 font-bold text-sm border-2 border-black ${latestDocsRun.status === "completed" ? "bg-neo-green text-white" : latestDocsRun.status === "running" ? "bg-neo-yellow" : latestDocsRun.status === "failed" ? "bg-neo-red text-white" : "bg-gray-200"}`}>
+                      {latestDocsRun.status.toUpperCase()}
+                    </span>
+                  </div>
                 </div>
                 <PipelineSteps steps={latestDocsRun.steps} />
+                {latestDocsRun.status === "completed" && (
+                  <PartnerBadges badges={latestDocsRun.result?.partner_badges} type="docs" />
+                )}
               </div>
             )}
 
@@ -252,7 +311,12 @@ export default function ProjectPage() {
             {docsResult && docsResult.pages && docsResult.pages.length > 0 && (
               <div className="bg-white border-4 border-black shadow-neo" data-testid="docs-result">
                 <div className="border-b-4 border-black p-4 flex items-center justify-between">
-                  <h3 className="font-bold text-lg"><i className="bi bi-file-earmark-text mr-2"></i>Generated Documentation</h3>
+                  <div>
+                    <h3 className="font-bold text-lg"><i className="bi bi-file-earmark-text mr-2"></i>Generated Documentation</h3>
+                    {docsResult.partner_badges && (
+                      <PartnerBadges badges={docsResult.partner_badges} type="docs" />
+                    )}
+                  </div>
                   <span className="text-sm text-gray-500">{docsResult.pages.length} pages</span>
                 </div>
                 <div className="flex">
@@ -316,17 +380,57 @@ export default function ProjectPage() {
               <div className="bg-white border-4 border-black shadow-neo p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-lg">Bug Fix Pipeline Progress</h3>
-                  <span className={`px-3 py-1 font-bold text-sm border-2 border-black ${latestBugfixRun.status === "completed" ? "bg-neo-green text-white" : latestBugfixRun.status === "running" ? "bg-neo-yellow" : latestBugfixRun.status === "failed" ? "bg-neo-red text-white" : "bg-gray-200"}`}>
-                    {latestBugfixRun.status.toUpperCase()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {latestBugfixRun.status === "completed" && (
+                      <button
+                        onClick={() => window.open(`${API}/pipeline-runs/${latestBugfixRun.id}/replay`, '_blank')}
+                        className="neo-button bg-neo-purple text-white px-3 py-1 text-xs font-bold border-2 border-black shadow-neo-sm"
+                        data-testid="replay-bugfix-btn"
+                      >
+                        <i className="bi bi-camera-reels mr-1"></i>REPLAY RUN
+                      </button>
+                    )}
+                    <span className={`px-3 py-1 font-bold text-sm border-2 border-black ${latestBugfixRun.status === "completed" ? "bg-neo-green text-white" : latestBugfixRun.status === "running" ? "bg-neo-yellow" : latestBugfixRun.status === "failed" ? "bg-neo-red text-white" : "bg-gray-200"}`}>
+                      {latestBugfixRun.status.toUpperCase()}
+                    </span>
+                  </div>
                 </div>
                 <PipelineSteps steps={latestBugfixRun.steps} />
+                {latestBugfixRun.status === "completed" && (
+                  <PartnerBadges badges={latestBugfixRun.result?.partner_badges} type="bugfix" />
+                )}
               </div>
             )}
 
             {/* Bugfix Result */}
             {bugfixResult && (
               <div className="space-y-6" data-testid="bugfix-result">
+                {/* Partner Badges */}
+                {bugfixResult.partner_badges && (
+                  <div className="bg-white border-4 border-black shadow-neo p-4">
+                    <PartnerBadges badges={bugfixResult.partner_badges} type="bugfix" />
+                  </div>
+                )}
+
+                {/* Gearsec Policy Result */}
+                {bugfixResult.gearsec_result && (
+                  <div className={`border-4 border-black shadow-neo p-6 ${bugfixResult.gearsec_result.status === "pass" ? "bg-green-50" : "bg-red-50"}`} data-testid="gearsec-result">
+                    <div className="flex items-center gap-3 mb-3">
+                      <i className={`bi bi-shield-check text-2xl ${bugfixResult.gearsec_result.status === "pass" ? "text-neo-green" : "text-neo-red"}`}></i>
+                      <h3 className="font-bold text-lg">Gearsec Policy Check: {bugfixResult.gearsec_result.status.toUpperCase()}</h3>
+                      <span className="text-xs font-mono bg-gray-200 px-2 py-0.5 border border-black">{bugfixResult.gearsec_result.engine}</span>
+                    </div>
+                    <p className="text-sm">{bugfixResult.gearsec_result.summary}</p>
+                    {bugfixResult.gearsec_result.warnings?.length > 0 && (
+                      <div className="mt-2">
+                        {bugfixResult.gearsec_result.warnings.map((w, i) => (
+                          <p key={i} className="text-xs text-yellow-700"><i className="bi bi-exclamation-triangle mr-1"></i>{w}</p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Root Cause */}
                 <div className="bg-white border-4 border-black shadow-neo p-6">
                   <h3 className="font-bold text-lg mb-3"><i className="bi bi-search mr-2 text-neo-red"></i>Root Cause Analysis</h3>

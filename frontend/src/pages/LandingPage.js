@@ -204,19 +204,25 @@ export default function LandingPage() {
     await addLine("> Initializing EngineOps Runtime v2.4.0...", "text-white", 300);
     await addLine("> Loading CPG engine for repo: user/demo-repo...", "text-gray-400", 700);
 
-    setStatusBadge({ visible: true, text: "READING REPO", className: "bg-blue-400 text-white" });
+    setStatusBadge({ visible: true, text: "UNSILOED PARSER", className: "bg-indigo-500 text-white" });
     setProgressStep(0);
+    setProgressLabel("parsing unstructured files...");
+    await addLine('> <span class="text-indigo-400">UNSILOED:</span> Scanning repo for PDFs, READMEs, docs...', "text-white", 600);
+    await addLine("> 4 unstructured files parsed and indexed into ChromaDB.", "text-green-400", 800);
+
+    setStatusBadge({ visible: true, text: "READING REPO", className: "bg-blue-400 text-white" });
+    setProgressStep(1);
     setProgressLabel("reading repo...");
-    await addLine('> <span class="text-purple-400">AGENT:</span> Code Reader connected.', "text-white", 900);
-    await addLine("> Analyzing 420 source files...", "text-white", 700);
-    await addLine("> Building Code Property Graph (AST + CFG + PDG)...", "text-gray-400", 900);
-    await addLine("> CPG complete — 1,842 nodes, 3,210 edges indexed.", "text-green-400", 800);
+    await addLine('> <span class="text-purple-400">AGENT:</span> Code Reader connected.', "text-white", 600);
+    await addLine("> Analyzing 420 source files...", "text-white", 500);
+    await addLine("> Building Code Property Graph (AST + CFG + PDG)...", "text-gray-400", 700);
+    await addLine("> CPG complete — 1,842 nodes, 3,210 edges indexed.", "text-green-400", 600);
 
     setStatusBadge({ visible: true, text: "TRACING BUG", className: "bg-red-400 text-white" });
-    setProgressStep(1);
+    setProgressStep(2);
     setProgressLabel("tracing root cause...");
-    await addLine('> <span class="text-red-400">ALERT:</span> CI Failure detected — commit 8f3a92.', "text-white", 700);
-    await addLine("> Tracing via CPG data flow graph...", "text-white", 600);
+    await addLine('> <span class="text-red-400">ALERT:</span> CI Failure detected — commit 8f3a92.', "text-white", 500);
+    await addLine("> Tracing via CPG data flow graph...", "text-white", 500);
 
     // Bug trace animation
     setShowCodeTrace(true);
@@ -234,28 +240,37 @@ export default function LandingPage() {
       }, 400);
     });
 
-    setProgressStep(2);
+    setProgressStep(3);
     setProgressLabel("generating patches...");
     await addLine("> Root cause confirmed: null dereference at AuthController.ts:42", "text-yellow-400", 400);
-    await addLine("> Querying RAG for similar fix patterns...", "text-white", 700);
-    await addLine("> Generating 3 candidate patches...", "text-white", 800);
-    await addLine('> Patch #1: Testing in sandbox...  <span class="text-red-400">FAILED</span>', "text-white", 1000);
-    await addLine('> Patch #2: Testing in sandbox...  <span class="text-green-400">PASSED</span>', "text-white", 900);
+    await addLine("> Querying RAG for similar fix patterns...", "text-white", 500);
+    await addLine("> Generating 3 candidate patches...", "text-white", 600);
+    await addLine('> Patch #1: Testing in sandbox...  <span class="text-red-400">FAILED</span>', "text-white", 700);
+    await addLine('> Patch #2: Testing in sandbox...  <span class="text-green-400">PASSED</span>', "text-white", 600);
+
+    setStatusBadge({ visible: true, text: "GEARSEC POLICY", className: "bg-yellow-500 text-black" });
+    setProgressStep(4);
+    setProgressLabel("policy check...");
+    await addLine('> <span class="text-yellow-400">GEARSEC:</span> Running pre-merge policy enforcement...', "text-white", 600);
+    await addLine("> 4 policies checked — 0 violations, 0 warnings.", "text-green-400", 500);
+    await addLine("> Policy gate: PASSED", "text-green-400", 300);
 
     setStatusBadge({ visible: true, text: "WRITING DOCS", className: "bg-purple-500 text-white" });
-    setProgressStep(3);
+    setProgressStep(5);
     setProgressLabel("publishing docs...");
-    await addLine("> Running Safedep dependency scan...", "text-white", 700);
-    await addLine("> 2 vulnerabilities found — appended to docs.", "text-gray-400", 700);
-    await addLine("> Compiling documentation site with MkDocs...", "text-white", 800);
-    await addLine("> Deploying to GitHub Pages...", "text-gray-400", 600);
+    await addLine('> <span class="text-orange-400">SAFEDEP:</span> Running dependency security scan...', "text-white", 500);
+    await addLine("> 24 dependencies scanned — 2 vulnerabilities found.", "text-yellow-400", 500);
+    await addLine("> Security section appended to docs.", "text-gray-400", 400);
+    await addLine("> Compiling documentation site with MkDocs...", "text-white", 500);
+    await addLine("> Deploying to GitHub Pages...", "text-gray-400", 400);
 
-    setStatusBadge({ visible: true, text: "SHIPPED ✓", className: "bg-green-500 text-white" });
-    setProgressStep(4);
+    setStatusBadge({ visible: true, text: "SHIPPED", className: "bg-green-500 text-white" });
+    setProgressStep(6);
     setProgressLabel("done.");
     await addLine('> <span class="text-green-400 font-bold">SUCCESS:</span> PR #482 Created & Merged via GitHub API.', "text-white", 400);
     await addLine('> <span class="text-green-400 font-bold">SUCCESS:</span> Docs live at https://docs.engineops.dev/demo', "text-white", 400);
-    await addLine('> <span class="text-purple-400">S2.dev:</span> Full audit trail logged — 18 agent steps recorded.', "text-gray-400", 500);
+    await addLine('> <span class="text-purple-400">S2.dev:</span> Full audit trail logged — 18 agent steps recorded.', "text-gray-400", 400);
+    await addLine('> <span class="text-teal-400">CONCIERGE:</span> Team notified via Slack.', "text-gray-400", 400);
 
     setIsRunning(false);
   }, [isRunning, addLine]);
@@ -352,7 +367,7 @@ export default function LandingPage() {
                 <div className="mt-4 pt-4 border-t border-gray-700">
                   {/* Progress segments */}
                   <div className="mb-2 flex gap-1 h-2 border border-gray-700 overflow-hidden" data-testid="progress-segments">
-                    {[0, 1, 2, 3, 4].map((i) => (
+                    {[0, 1, 2, 3, 4, 5, 6].map((i) => (
                       <div key={i} className={`seg ${i < progressStep ? "done-seg" : ""} ${i === progressStep ? "active-seg" : ""}`}></div>
                     ))}
                   </div>
@@ -458,11 +473,11 @@ export default function LandingPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                   <div className="border-2 border-black bg-white p-4">
                     <h5 className="font-bold text-neo-blue mb-3">DOCS PIPELINE</h5>
-                    <PipelineCycler steps={["Code Reader", "RAG Writer", "Editor", "Compiler", "Deployer"]} colorClass="text-neo-blue" />
+                    <PipelineCycler steps={["Unsiloed Parser", "Code Reader", "RAG Writer", "Editor", "Safedep MCP", "Compiler", "Deployer", "Concierge"]} colorClass="text-neo-blue" />
                   </div>
                   <div className="border-2 border-black bg-white p-4">
                     <h5 className="font-bold text-neo-green mb-3">BUG-RESOLUTION PIPELINE</h5>
-                    <PipelineCycler steps={["Log Parser", "Patch Generator", "Sandbox Tester", "Selector", "Merger"]} colorClass="text-neo-green" />
+                    <PipelineCycler steps={["Unsiloed Parser", "Log Parser", "Patch Generator", "Sandbox Tester", "Selector", "Gearsec MCP", "Merger", "Concierge"]} colorClass="text-neo-green" />
                   </div>
                 </div>
                 <div className="mt-6 bg-black text-white text-center py-2 font-mono text-xs border border-white">

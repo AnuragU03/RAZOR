@@ -4,25 +4,39 @@ import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const PARTNER_CONFIG = [
+  { key: "unsiloed", icon: "bi-file-earmark-richtext", color: "bg-indigo-500" },
+  { key: "safedep", icon: "bi-shield-lock", color: "bg-orange-500" },
+  { key: "s2", icon: "bi-camera-reels", color: "bg-blue-500" },
+  { key: "gearsec", icon: "bi-shield-check", color: "bg-yellow-500" },
+  { key: "concierge", icon: "bi-bell", color: "bg-teal-500" },
+];
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState([]);
   const [stats, setStats] = useState(null);
+  const [partnerStatus, setPartnerStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
   const [repoUrl, setRepoUrl] = useState("");
   const [githubToken, setGithubToken] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [demoLoading, setDemoLoading] = useState(false);
+  const [globalToken, setGlobalToken] = useState(() => sessionStorage.getItem("github_token") || "");
+  const [showTokenInput, setShowTokenInput] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [projRes, statsRes] = await Promise.all([
+      const [projRes, statsRes, partnerRes] = await Promise.all([
         axios.get(`${API}/projects`),
         axios.get(`${API}/stats`),
+        axios.get(`${API}/partner-status`).catch(() => ({ data: null })),
       ]);
       setProjects(projRes.data);
       setStats(statsRes.data);
+      if (partnerRes.data) setPartnerStatus(partnerRes.data);
     } catch (err) {
       console.error("Failed to fetch data:", err);
     } finally {
@@ -38,7 +52,8 @@ export default function DashboardPage() {
     setError("");
     try {
       const payload = { repo_url: repoUrl };
-      if (githubToken.trim()) payload.github_token = githubToken.trim();
+      const token = githubToken.trim() || globalToken.trim();
+      if (token) payload.github_token = token;
       const res = await axios.post(`${API}/projects`, payload);
       setShowNewProject(false);
       setRepoUrl("");
@@ -60,6 +75,18 @@ export default function DashboardPage() {
     }
   };
 
+  const launchDemo = async () => {
+    setDemoLoading(true);
+    try {
+      const res = await axios.post(`${API}/demo`);
+      navigate(`/dashboard/project/${res.data.project_id}`);
+    } catch (err) {
+      alert(err.response?.data?.detail || "Failed to launch demo");
+    } finally {
+      setDemoLoading(false);
+    }
+  };
+
   return (
     <div className="neo-bg-paper min-h-screen" data-testid="dashboard-page">
       {/* Header */}
@@ -73,6 +100,46 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4">
           <button onClick={() => navigate("/")} className="text-sm font-bold hover:text-neo-purple transition-colors" data-testid="back-to-landing-btn">
             <i className="bi bi-arrow-left mr-1"></i> LANDING
+          </button>
+          {/* GitHub Token */}
+          <div className="relative">
+            <button
+              onClick={() => setShowTokenInput(!showTokenInput)}
+              className={`neo-button px-4 py-2 font-bold text-sm border-2 border-black shadow-neo-sm transition-colors ${globalToken ? "bg-neo-green text-white" : "bg-white text-black hover:bg-gray-100"}`}
+              data-testid="token-toggle-btn"
+            >
+              <i className={`bi ${globalToken ? "bi-key-fill" : "bi-key"} mr-1`}></i>
+              {globalToken ? "TOKEN SET" : "GH TOKEN"}
+            </button>
+            {showTokenInput && (
+              <div className="absolute right-0 top-12 bg-white border-4 border-black shadow-neo p-4 w-80 z-50">
+                <label className="block font-bold mb-2 text-xs uppercase">GitHub Personal Access Token</label>
+                <input
+                  type="password"
+                  value={globalToken}
+                  onChange={(e) => {
+                    setGlobalToken(e.target.value);
+                    sessionStorage.setItem("github_token", e.target.value);
+                  }}
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  className="w-full bg-[#f0f0f0] border-2 border-black p-2 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-neo-purple"
+                  data-testid="global-token-input"
+                />
+                <p className="text-[10px] text-gray-500 mt-1">Stored in session only. Used for private repos & PR creation.</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={launchDemo}
+            disabled={demoLoading}
+            className="neo-button bg-neo-purple text-white px-6 py-2 font-bold border-2 border-black shadow-neo-sm hover:bg-purple-600 transition-colors disabled:opacity-50"
+            data-testid="one-click-demo-btn"
+          >
+            {demoLoading ? (
+              <><i className="bi bi-hourglass-split mr-2"></i>LAUNCHING...</>
+            ) : (
+              <><i className="bi bi-play-circle mr-2"></i>ONE-CLICK DEMO</>
+            )}
           </button>
           <button onClick={() => setShowNewProject(true)} className="neo-button bg-neo-green text-white px-6 py-2 font-bold border-2 border-black shadow-neo-sm hover:bg-green-600 transition-colors" data-testid="new-project-btn">
             <i className="bi bi-plus-lg mr-2"></i>NEW PROJECT
@@ -99,6 +166,34 @@ export default function DashboardPage() {
             <div className="bg-white border-4 border-black shadow-neo p-4">
               <p className="text-sm font-bold uppercase text-gray-500">Success Rate</p>
               <p className="font-display font-bold text-3xl text-neo-blue">{stats.success_rate}%</p>
+            </div>
+          </div>
+        )}
+
+        {/* Partner Integrations */}
+        {partnerStatus && (
+          <div className="bg-white border-4 border-black shadow-neo p-4 mb-8" data-testid="partner-status-bar">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-sm uppercase text-gray-500">Partner Integrations</h3>
+              <span className="text-xs font-mono text-gray-400">{Object.values(partnerStatus).filter(v => v.configured).length}/{Object.keys(partnerStatus).length} active</span>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {PARTNER_CONFIG.map(({ key, icon, color }) => {
+                const p = partnerStatus[key];
+                if (!p) return null;
+                return (
+                  <div
+                    key={key}
+                    className={`flex items-center gap-2 px-3 py-2 border-2 border-black text-sm font-bold ${p.configured ? `${color} text-white` : "bg-gray-100 text-gray-400"}`}
+                    data-testid={`partner-${key}`}
+                  >
+                    <i className={`bi ${icon}`}></i>
+                    <span>{p.name}</span>
+                    <span className="text-xs opacity-75">({p.role})</span>
+                    {p.configured ? <i className="bi bi-check-lg"></i> : <i className="bi bi-dash-lg"></i>}
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -157,10 +252,20 @@ export default function DashboardPage() {
           <div className="bg-white border-4 border-black shadow-neo p-12 text-center" data-testid="empty-projects">
             <i className="bi bi-github text-6xl text-gray-300 mb-4 block"></i>
             <h3 className="font-display font-bold text-2xl mb-2">No projects yet</h3>
-            <p className="text-gray-500 mb-6">Connect a GitHub repository to get started with EngineOps.</p>
-            <button onClick={() => setShowNewProject(true)} className="neo-button bg-neo-green text-white px-8 py-3 font-bold border-2 border-black shadow-neo" data-testid="empty-new-project-btn">
-              <i className="bi bi-plus-lg mr-2"></i>ADD YOUR FIRST PROJECT
-            </button>
+            <p className="text-gray-500 mb-6">Connect a GitHub repository or try the demo to see EngineOps in action.</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={launchDemo}
+                disabled={demoLoading}
+                className="neo-button bg-neo-purple text-white px-8 py-3 font-bold border-2 border-black shadow-neo disabled:opacity-50"
+                data-testid="empty-demo-btn"
+              >
+                <i className="bi bi-play-circle mr-2"></i>ONE-CLICK DEMO
+              </button>
+              <button onClick={() => setShowNewProject(true)} className="neo-button bg-neo-green text-white px-8 py-3 font-bold border-2 border-black shadow-neo" data-testid="empty-new-project-btn">
+                <i className="bi bi-plus-lg mr-2"></i>ADD PROJECT
+              </button>
+            </div>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6" data-testid="project-list">

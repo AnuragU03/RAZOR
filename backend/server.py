@@ -18,6 +18,7 @@ from models.schemas import (
 from services.github_service import parse_repo_url, fetch_repo_info, fetch_ci_workflow_runs, fetch_ci_run_logs
 from services.docs_pipeline import run_docs_pipeline
 from services.bugfix_pipeline import run_bugfix_pipeline
+from services.s2_service import get_audit_summary, read_stream
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -69,6 +70,88 @@ async def root():
 @api_router.get("/health")
 async def health():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# --- One-Click Demo ---
+DEMO_REPO = "https://github.com/pallets/flask"
+DEMO_CI_LOG = """=== GitHub Actions CI — Build & Test ===
+Run: ubuntu-latest / Python 3.11
+Job: test (3.11)
+
+> pip install -e ".[dev]"
+> python -m pytest tests/ -x --tb=short
+
+FAILED tests/test_basic.py::test_make_response_with_response_instance
+tests/test_basic.py:142: in test_make_response_with_response_instance
+    rv = client.get("/")
+tests/test_basic.py:138: in index
+    response = flask.make_response(flask.Response("Hello", status=200))
+E   TypeError: make_response() got an unexpected keyword argument 'status'
+
+During handling of the above exception, another exception occurred:
+tests/test_basic.py:142: in test_make_response_with_response_instance
+    rv = client.get("/")
+src/flask/app.py:1498: in __call__
+    return self.wsgi_app(environ, start_response)
+src/flask/app.py:1476: in wsgi_app
+    response = self.handle_exception(e)
+src/flask/app.py:862: in handle_exception
+    raise e
+src/flask/app.py:1473: in wsgi_app
+    response = self.full_dispatch_request()
+src/flask/app.py:920: in full_dispatch_request
+    rv = self.dispatch_request()
+src/flask/app.py:901: in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**req.view_args)
+
+FAILED (1 failed, 247 passed, 12 skipped in 14.23s)
+Error: Process completed with exit code 1."""
+
+
+@api_router.post("/demo")
+async def create_demo_project(background_tasks: BackgroundTasks):
+    """One-click demo: create a project with a known repo and trigger both pipelines."""
+    try:
+        owner, repo_name = parse_repo_url(DEMO_REPO)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Demo repo URL error")
+
+    # Check if demo project already exists
+    existing = await db.projects.find_one({"repo_url": DEMO_REPO}, {"_id": 0})
+    if existing:
+        # Re-trigger pipelines on existing project
+        project_id = existing["id"]
+        # Cancel any running pipelines first
+        await db.pipeline_runs.update_many(
+            {"project_id": project_id, "status": "running"},
+            {"$set": {"status": "failed", "completed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        # Create new demo project
+        try:
+            await fetch_repo_info(owner, repo_name)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not access demo repo: {str(e)}")
+
+        project = Project(
+            repo_url=DEMO_REPO,
+            repo_owner=owner,
+            repo_name=repo_name,
+        )
+        doc = project.model_dump()
+        await db.projects.insert_one(doc)
+        project_id = project.id
+
+    # Trigger both pipelines
+    background_tasks.add_task(run_docs_pipeline, project_id, db, pipeline_event_callback)
+    background_tasks.add_task(run_bugfix_pipeline, project_id, DEMO_CI_LOG, db, pipeline_event_callback)
+
+    return {
+        "status": "demo_started",
+        "project_id": project_id,
+        "message": "Demo started! Both docs and bugfix pipelines are running.",
+        "repo": DEMO_REPO,
+    }
 
 
 # --- Project CRUD ---
@@ -324,6 +407,58 @@ async def get_stats():
         "docs_pipeline_runs": docs_runs,
         "bugfix_pipeline_runs": bugfix_runs,
         "success_rate": round(completed_runs / total_runs * 100, 1) if total_runs > 0 else 0,
+    }
+
+
+# --- S2.dev Audit Trail / Replay ---
+@api_router.get("/pipeline-runs/{run_id}/audit-trail")
+async def get_pipeline_audit_trail(run_id: str):
+    """Get the S2.dev audit trail for a pipeline run (for Replay Run button)."""
+    summary = await get_audit_summary(run_id)
+    return summary
+
+
+@api_router.get("/pipeline-runs/{run_id}/replay")
+async def replay_pipeline_run(run_id: str):
+    """Read all S2 stream records for replay."""
+    records = await read_stream(run_id)
+    run = await db.pipeline_runs.find_one({"id": run_id}, {"_id": 0})
+    return {
+        "run_id": run_id,
+        "pipeline_type": run.get("pipeline_type") if run else None,
+        "status": run.get("status") if run else None,
+        "records": records,
+        "total_records": len(records),
+    }
+
+
+# --- Partner Integration Status ---
+@api_router.get("/partner-status")
+async def get_partner_status():
+    """Check which partner integrations are configured and active."""
+    import services.s2_service as s2
+    return {
+        "unsiloed": {"configured": bool(os.environ.get("UNSILOED_API_KEY", "")) and not os.environ.get("UNSILOED_API_KEY", "").startswith("placeholder"), "name": "Unsiloed", "role": "Document Parser"},
+        "safedep": {"configured": bool(os.environ.get("SAFEDEP_CLOUD_API_KEY", "")), "name": "Safedep", "role": "Security Scanner"},
+        "s2": {"configured": s2._is_configured(), "name": "S2.dev", "role": "Audit Trail"},
+        "gearsec": {"configured": not os.environ.get("GEARSEC_API_KEY", "").startswith("placeholder"), "name": "Gearsec", "role": "Policy Gate"},
+        "concierge": {"configured": not os.environ.get("CONCIERGE_API_KEY", "").startswith("placeholder"), "name": "Concierge", "role": "Notifications"},
+    }
+
+
+# --- MCP Endpoint for Concierge ---
+@api_router.post("/mcp")
+async def mcp_endpoint():
+    """MCP server endpoint for Concierge to call EngineOps as a tool."""
+    return {
+        "name": "engineops",
+        "version": "1.0.0",
+        "description": "AI-Native Engineering Operations — ships docs and bug-fix PRs from GitHub repos",
+        "tools": [
+            {"name": "run_docs_pipeline", "description": "Generate documentation for a GitHub repository"},
+            {"name": "run_bugfix_pipeline", "description": "Analyze CI failure and generate bug-fix PR"},
+            {"name": "get_project_status", "description": "Get status of a project and its pipeline runs"},
+        ],
     }
 
 
