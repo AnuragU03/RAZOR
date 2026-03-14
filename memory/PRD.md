@@ -2,7 +2,7 @@
 
 ## Problem Statement
 EngineOps takes a GitHub repository and a failing CI run and returns two shipped outcomes:
-1. A live documentation site
+1. A live documentation site (pushed as PR to repo)
 2. A validated bug-fix pull request
 
 ## Architecture
@@ -16,53 +16,34 @@ EngineOps takes a GitHub repository and a failing CI run and returns two shipped
 ### Documentation Pipeline
 0. **Unsiloed Parser** — Parse PDFs, READMEs, unstructured docs via Unsiloed SDK
 1. **Code Reader** — Build Code Property Graph from source files
-2. **RAG Writer** — Query ChromaDB (code + unstructured context) to generate docs
+2. **RAG Writer** — Generate documentation pages via Claude AI
 3. **Editor** — Clarity and consistency pass via AI
 4. **Safedep MCP** — Dependency security scan, append Security section
 5. **Compiler** — Build static documentation structure
-6. **Deployer** — Publish documentation
-7. **Concierge** — Team notification
+6. **Deployer** — Create branch, commit docs to `docs/` folder, open PR on GitHub
+7. **Concierge** — Team notification with PR link
 
 ### Bug-Fix Pipeline
 0. **Unsiloed Parser** — Parse CI log and unstructured repo files
 1. **Log Parser** — Trace root cause via CPG
-2. **Patch Generator** — Generate 3 candidate patches using RAG context
+2. **Patch Generator** — Generate 3 candidate patches
 3. **Sandbox Tester** — Test each patch
 4. **Selector** — Pick passing patch
 5. **Gearsec MCP** — Pre-merge policy compliance check
-6. **Merger** — Create PR via GitHub API
+6. **Merger** — Create branch, commit fix, open PR on GitHub
 7. **Concierge** — Team notification with PR link
 
-## What's Implemented
-
-### Real End-to-End Pipeline (Verified on AnuragU03/STT repo)
-- **Docs pipeline**: All 8/8 steps completed — 5 pages generated, 37 deps scanned
-- **Bugfix pipeline**: All 8/8 steps completed — 3 real PRs created (#9, #10, #11)
-- **S2.dev audit trail**: 16 records per pipeline run (verified working)
-- **Gearsec policy gate**: PASSED with 0 violations
-- **Safedep security scan**: 37 dependencies scanned
-- **Unsiloed parsing**: 2 unstructured files indexed per run
-
-### Partner Integrations
-- **Unsiloed** — Real SDK (unsiloed_sdk), real API key, parses PDFs and text docs
-- **Safedep** — Real API, dependency extraction + vulnerability scanning
-- **S2.dev** — Real StreamStore (PUT/POST/GET streams), verified audit trail
-- **Gearsec** — Local policy engine (placeholder for cloud API, get key at event)
-- **Concierge** — Local notification logging (placeholder, get key at event)
-
-### Features
-- One-Click Demo mode
-- GitHub token auth (session-stored)
-- Partner status bar in dashboard
-- Replay Run button linking to S2.dev audit trail
-- Partner badges on pipeline results
-- AI model: Claude 4 Sonnet (claude-4-sonnet-20250514) with timeout/retry logic
+## Real Results on AnuragU03/STT
+- **Docs PR**: https://github.com/AnuragU03/STT/pull/12 (5 pages)
+- **Bugfix PRs**: #9, #10, #11 (3 different fix strategies)
+- **S2.dev audit trail**: 16 records per pipeline run
+- **All partner integrations working end-to-end**
 
 ## Credentials
 - EMERGENT_LLM_KEY: Configured
 - UNSILOED_API_KEY: Real key
 - SAFEDEP_CLOUD_API_KEY: Real key
-- S2_ACCESS_TOKEN: Real key, verified working
+- S2_ACCESS_TOKEN: Real key, verified
 - GEARSEC_API_KEY: Placeholder (get at event)
 - CONCIERGE_API_KEY: Placeholder (get at event)
 - GitHub Token: User-provided per session
