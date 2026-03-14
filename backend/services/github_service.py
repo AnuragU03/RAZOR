@@ -84,6 +84,10 @@ async def fetch_repo_info(owner: str, repo: str, token: Optional[str] = None) ->
     async with httpx.AsyncClient(timeout=30) as client:
         url = f"{GITHUB_API}/repos/{owner}/{repo}"
         resp = await client.get(url, headers=_headers(token))
+        if resp.status_code == 403:
+            raise Exception("GitHub API rate limit exceeded. Please provide a GitHub token for authenticated access.")
+        if resp.status_code == 404:
+            raise Exception(f"Repository '{owner}/{repo}' not found. Check the URL or provide a token for private repos.")
         if resp.status_code != 200:
             raise Exception(f"Could not fetch repo info: {resp.status_code}")
         data = resp.json()
