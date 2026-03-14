@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import asyncio
 from emergentintegrations.llm.chat import LlmChat, UserMessage
 from dotenv import load_dotenv
 from pathlib import Path
@@ -10,6 +11,9 @@ logger = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
+AI_TIMEOUT = 120  # seconds per AI call
+CLAUDE_MODEL = "claude-4-sonnet-20250514"
+
 
 def _create_chat(session_id: str, system_message: str) -> LlmChat:
     chat = LlmChat(
@@ -17,8 +21,27 @@ def _create_chat(session_id: str, system_message: str) -> LlmChat:
         session_id=session_id,
         system_message=system_message,
     )
-    chat.with_model("anthropic", "claude-sonnet-4-5-20250929")
+    chat.with_model("anthropic", CLAUDE_MODEL)
+    logger.info(f"AI chat created: provider=anthropic, model={CLAUDE_MODEL}, session={session_id}")
     return chat
+
+
+async def _send_with_timeout(chat: LlmChat, msg: UserMessage, timeout: int = AI_TIMEOUT) -> str:
+    """Send message to AI with timeout and retry."""
+    for attempt in range(2):
+        try:
+            return await asyncio.wait_for(chat.send_message(msg), timeout=timeout)
+        except asyncio.TimeoutError:
+            if attempt == 0:
+                logger.warning(f"AI call timed out after {timeout}s, retrying...")
+                continue
+            raise Exception(f"AI call timed out after {timeout}s (2 attempts)")
+        except Exception as e:
+            if attempt == 0 and "502" in str(e):
+                logger.warning(f"AI call got 502, retrying: {e}")
+                await asyncio.sleep(2)
+                continue
+            raise
 
 
 async def analyze_repo_structure(file_tree: list[dict], key_file_contents: dict, repo_info: dict) -> dict:
@@ -58,7 +81,7 @@ Key file contents:
 Respond with valid JSON only. No markdown formatting."""
     )
 
-    response = await chat.send_message(msg)
+    response = await _send_with_timeout(chat, msg)
     try:
         # Try to parse as JSON
         cleaned = response.strip()
@@ -73,31 +96,25 @@ async def generate_module_docs(module_name: str, module_files: dict, repo_contex
     """Generate documentation for a specific module."""
     files_text = ""
     for path, content in module_files.items():
-        files_text += f"\n--- {path} ---\n{content[:4000]}\n"
+        files_text += f"\n--- {path} ---\n{content[:2500]}\n"
 
     chat = _create_chat(
         session_id=f"docs-gen-{module_name}",
-        system_message="""You are a technical documentation writer. Generate clear, comprehensive documentation in Markdown format. Include:
-- Module overview and purpose
-- Key classes/functions with descriptions
-- Usage examples where applicable
-- API reference if endpoints exist
-- Configuration details if applicable
-Write for a developer audience. Be precise and practical."""
+        system_message="""You are a technical documentation writer. Generate clear documentation in Markdown. Include module overview, key functions, usage examples, and API reference if applicable. Be concise and practical."""
     )
 
     msg = UserMessage(
         text=f"""Generate documentation for the "{module_name}" module.
 
-Repository context: {repo_context[:2000]}
+Context: {repo_context[:1000]}
 
-Module files:
-{files_text}
+Files:
+{files_text[:8000]}
 
-Write comprehensive Markdown documentation."""
+Write Markdown documentation."""
     )
 
-    return await chat.send_message(msg)
+    return await _send_with_timeout(chat, msg)
 
 
 async def edit_documentation(raw_docs: str, module_name: str) -> str:
@@ -114,7 +131,7 @@ Return the edited Markdown documentation only."""
     )
 
     msg = UserMessage(text=f"Edit and refine this documentation:\n\n{raw_docs}")
-    return await chat.send_message(msg)
+    return await _send_with_timeout(chat, msg)
 
 
 async def generate_overview_doc(repo_info: dict, analysis: dict) -> str:
@@ -143,7 +160,7 @@ Architecture analysis:
 Write comprehensive Markdown documentation."""
     )
 
-    return await chat.send_message(msg)
+    return await _send_with_timeout(chat, msg)
 
 
 async def analyze_ci_failure(ci_log: str, repo_context: str, file_contents: dict) -> dict:
@@ -180,7 +197,7 @@ Relevant source files:
 Respond with valid JSON only. No markdown formatting."""
     )
 
-    response = await chat.send_message(msg)
+    response = await _send_with_timeout(chat, msg)
     try:
         cleaned = response.strip()
         if cleaned.startswith("```"):
@@ -230,7 +247,7 @@ Repository context:
 Respond with a valid JSON array only. No markdown formatting."""
     )
 
-    response = await chat.send_message(msg)
+    response = await _send_with_timeout(chat, msg)
     try:
         cleaned = response.strip()
         if cleaned.startswith("```"):
@@ -281,7 +298,7 @@ Source context:
 Respond with just the index number (0, 1, or 2)."""
     )
 
-    response = await chat.send_message(msg)
+    response = await _send_with_timeout(chat, msg)
     try:
         idx = int(response.strip())
         return min(idx, len(patches) - 1)
@@ -305,7 +322,7 @@ Patch: {json.dumps(selected_patch, indent=2)[:2000]}
 Respond with valid JSON only."""
     )
 
-    response = await chat.send_message(msg)
+    response = await _send_with_timeout(chat, msg)
     try:
         cleaned = response.strip()
         if cleaned.startswith("```"):

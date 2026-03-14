@@ -186,16 +186,20 @@ async def run_docs_pipeline(project_id: str, db: AsyncIOMotorDatabase, event_cal
         overview_doc = await generate_overview_doc(repo_info, analysis)
         doc_pages.append({"title": "Overview", "section": "overview", "content": overview_doc})
 
-        sorted_modules = sorted(modules.items(), key=lambda x: len(x[1]), reverse=True)[:8]
+        sorted_modules = sorted(modules.items(), key=lambda x: len(x[1]), reverse=True)[:5]
         for module_name, module_paths in sorted_modules:
-            module_file_contents = await fetch_multiple_files(
-                owner, repo, module_paths[:5], token, tree_data.get("branch", "main")
-            )
-            if module_file_contents:
-                module_doc = await generate_module_docs(
-                    module_name, module_file_contents, analysis.get("overview", "")
+            try:
+                module_file_contents = await fetch_multiple_files(
+                    owner, repo, module_paths[:4], token, tree_data.get("branch", "main")
                 )
-                doc_pages.append({"title": module_name, "section": "modules", "content": module_doc})
+                if module_file_contents:
+                    module_doc = await generate_module_docs(
+                        module_name, module_file_contents, analysis.get("overview", "")
+                    )
+                    doc_pages.append({"title": module_name, "section": "modules", "content": module_doc})
+            except Exception as e:
+                logger.warning(f"Module docs generation failed for {module_name}: {e}")
+                doc_pages.append({"title": module_name, "section": "modules", "content": f"# {module_name}\n\n*Documentation generation failed. Files: {', '.join(module_paths[:4])}*"})
 
         await notify(2, "completed", f"Generated {len(doc_pages)} documentation pages")
 
@@ -203,8 +207,12 @@ async def run_docs_pipeline(project_id: str, db: AsyncIOMotorDatabase, event_cal
         await notify(3, "running")
         edited_pages = []
         for page in doc_pages:
-            edited_content = await edit_documentation(page["content"], page["title"])
-            edited_pages.append({**page, "content": edited_content})
+            try:
+                edited_content = await edit_documentation(page["content"], page["title"])
+                edited_pages.append({**page, "content": edited_content})
+            except Exception as e:
+                logger.warning(f"Editor failed for {page['title']}: {e}")
+                edited_pages.append(page)  # Keep unedited version
         doc_pages = edited_pages
         await notify(3, "completed", f"Edited {len(doc_pages)} pages for clarity and consistency")
 
